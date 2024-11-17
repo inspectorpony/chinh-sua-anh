@@ -1,0 +1,9 @@
+Cách sử dụng:
+1st;
+Tkinter (library)
+Command copy paste on command prompt:
+pip install tk
+2nd;
+Pillow
+Command copy paste on command prompt:
+pip install pillow
