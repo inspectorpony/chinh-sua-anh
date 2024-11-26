@@ -77,17 +77,28 @@ class PhotoEditor:
 
     def create_buttons(self, frame):
         button_configs = [
-            ("Upload Image", self.upload_image, "green"),
+            ("Upload Image", self.upload_image, "black"),
             ("Save", self.save_image, "green"),
             ("Undo", self.undo_last_action, "green"),
+        ]
+
+        # Create meta buttons
+        for idx, (text, command, color) in enumerate(button_configs):
+            btn = CTkButton(
+                frame, text=text, command=command, fg_color=color, font=("Arial", 16)
+            )
+            btn.grid(row=0, column=idx, sticky="nsew", padx=10, pady=10)
+
+        # Create filter buttons
+        button_configs = [
             ("Brightness", self.show_brightness_slider, "red"),
-            ("Contrast", self.adjust_contrast, "red"),
+            ("Contrast", self.show_contrast_slider, "red"),
             ("Grayscale", self.apply_grayscale, "red"),
             ("Invert", self.invert_colors, "red"),
             ("Flip Horizontal", self.flip_horizontal, "red"),
             ("Flip Vertical", self.flip_vertical, "red"),
             ("Rotate", self.rotate_image, "red"),
-            ("Crop", self.start_cropping, "red"),
+            ("Crop", self.crop_center, "red"),
             ("Blur", self.apply_blur, "red"),
             ("Posterize", self.posterize_image, "red"),
         ]
@@ -96,7 +107,7 @@ class PhotoEditor:
             btn = CTkButton(
                 frame, text=text, command=command, fg_color=color, font=("Arial", 16)
             )
-            btn.grid(row=idx // 8, column=idx % 8, sticky="nsew", padx=10, pady=10)
+            btn.grid(row=1, column=idx, sticky="nsew", padx=10, pady=10)
 
     
     def show_brightness_slider(self):
@@ -118,11 +129,10 @@ class PhotoEditor:
             value = float(value)
             value_label.configure(text=f"Brightness: {value:.2f}")
             
-            # Apply brightness in real-time
-            modified = self.apply_image_filter(ImageEnhance.Brightness, value)
-            if modified:
-                self.modified_img = modified
-                self.display_images()
+            # Apply brightness to the current modified image
+            enhancer = ImageEnhance.Brightness(self.modified_img)
+            temp_img = enhancer.enhance(value)  # Use a temporary image to avoid overwriting
+            self.display_temp_image(temp_img)
 
         slider = CTkSlider(
             brightness_dialog, 
@@ -136,7 +146,11 @@ class PhotoEditor:
 
         # Confirmation button
         def confirm_brightness():
-            self.log_history(f"Brightness set to {slider.get():.2f}")
+            value = slider.get()
+            enhancer = ImageEnhance.Brightness(self.modified_img)
+            self.modified_img = enhancer.enhance(value)  # Apply the final enhancement
+            self.display_images()  # Update the main display
+            self.log_history(f"Brightness adjusted to {value:.2f}")
             brightness_dialog.destroy()
 
         confirm_btn = CTkButton(
@@ -146,13 +160,14 @@ class PhotoEditor:
         )
         confirm_btn.pack(pady=10)
 
+
     def show_contrast_slider(self):
         if not self.modified_img:
             messagebox.showerror("Error", "No image loaded!")
             return
 
         # Create a dialog window for contrast adjustment
-        contrast_dialog = tk.Toplevel(self.root)
+        contrast_dialog = CTkToplevel(self.root)
         contrast_dialog.title("Adjust Contrast")
         contrast_dialog.geometry("400x200")
 
@@ -162,13 +177,13 @@ class PhotoEditor:
 
         # Create slider
         def update_contrast(value):
+            value = float(value)
             value_label.configure(text=f"Contrast: {value:.2f}")
             
-            # Apply contrast in real-time
-            modified = self.apply_image_filter(ImageEnhance.Contrast, value)
-            if modified:
-                self.modified_img = modified
-                self.display_images()
+            # Apply contrast to the current modified image
+            enhancer = ImageEnhance.Contrast(self.modified_img)
+            temp_img = enhancer.enhance(value)  # Use a temporary image to avoid overwriting
+            self.display_temp_image(temp_img)
 
         slider = CTkSlider(
             contrast_dialog, 
@@ -182,7 +197,11 @@ class PhotoEditor:
 
         # Confirmation button
         def confirm_contrast():
-            self.log_history(f"Contrast set to {slider.get():.2f}")
+            value = slider.get()
+            enhancer = ImageEnhance.Contrast(self.modified_img)
+            self.modified_img = enhancer.enhance(value)  # Apply the final enhancement
+            self.display_images()  # Update the main display
+            self.log_history(f"Contrast adjusted to {value:.2f}")
             contrast_dialog.destroy()
 
         confirm_btn = CTkButton(
@@ -191,6 +210,12 @@ class PhotoEditor:
             command=confirm_contrast
         )
         confirm_btn.pack(pady=10)
+
+    def display_temp_image(self, temp_img):
+        temp_resized = self.resize_image(temp_img)
+        temp_image_tk = ImageTk.PhotoImage(temp_resized)
+        self.modified_image_label.configure(image=temp_image_tk)
+        self.modified_image_label.image = temp_image_tk
 
     def upload_image(self):
         file_path = filedialog.askopenfilename(
@@ -202,8 +227,10 @@ class PhotoEditor:
             self.file_path_var = file_path
             self.original_img = Image.open(file_path)
             self.modified_img = self.original_img.copy()
+            self.history = []  # Reset history
+            self.image_history = []  # Reset image history
+            self.image_history = [self.modified_img.copy()]  # Initialize with the original image
             self.display_images()
-            self.log_history("Uploaded Image")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load image: {e}")
 
@@ -336,17 +363,41 @@ class PhotoEditor:
             self.display_images()
             self.log_history("Posterized")
 
-    def start_cropping(self):
-        messagebox.showinfo("Info", "Cropping is not yet implemented!")
+    def crop_center(self):
+        if not self.modified_img:
+            messagebox.showerror("Error", "No image loaded!")
+            return
+
+        try:
+            # Add the original image to the image history
+            self.image_history.append(self.modified_img.copy())
+
+            # Define crop percentage (e.g., 80% of the original size)
+            crop_percentage = 0.8
+            width, height = self.modified_img.size
+            new_width = int(width * crop_percentage)
+            new_height = int(height * crop_percentage)
+
+            # Calculate coordinates to crop the center
+            left = (width - new_width) // 2
+            top = (height - new_height) // 2
+            right = left + new_width
+            bottom = top + new_height
+
+            # Perform the crop
+            self.modified_img = self.modified_img.crop((left, top, right, bottom))
+
+            # Update display and history
+            self.display_images()
+            self.log_history("Cropped Center")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to crop image: {e}")
 
     def undo_last_action(self):
-        if len(self.history) > 1:
+        if len(self.image_history) > 1:
             self.history.pop()  # Remove last action
             self.image_history.pop()  # Remove last image
-            if self.image_history:  # Check if list is not empty
-                self.modified_img = self.image_history[-1]  # Restore previous image
-            else:
-                self.modified_img = self.original_img.copy()  # Restore original image
+            self.modified_img = self.image_history[-1].copy()  # Restore the previous image
             self.display_images()
             self.update_history()
         else:
