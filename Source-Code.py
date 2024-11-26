@@ -69,7 +69,7 @@ class PhotoEditor:
         # Footer Label
         footer_label = CTkLabel(
             self.root,
-            text="Nhóm 2 - Xử lý thị giác",
+            text="Nhóm 2 - Xử lý ảnh và thị giác máy tính - 010100086902",
             font=("Arial", 20),
             fg_color="green",
         )
