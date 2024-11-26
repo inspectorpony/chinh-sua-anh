@@ -7,6 +7,8 @@ from customtkinter import (
     CTkLabel,
     set_appearance_mode,
     CTkFrame,
+    CTkSlider,
+    CTkToplevel,
 )
 
 
@@ -77,25 +79,118 @@ class PhotoEditor:
         button_configs = [
             ("Upload Image", self.upload_image, "green"),
             ("Save", self.save_image, "green"),
-            ("Undo", self.undo_last_action, "blue"),
-            ("Brightness", self.adjust_brightness, "orange"),
-            ("Contrast", self.adjust_contrast, "orange"),
+            ("Undo", self.undo_last_action, "green"),
+            ("Brightness", self.show_brightness_slider, "red"),
+            ("Contrast", self.adjust_contrast, "red"),
             ("Grayscale", self.apply_grayscale, "red"),
             ("Invert", self.invert_colors, "red"),
             ("Flip Horizontal", self.flip_horizontal, "red"),
             ("Flip Vertical", self.flip_vertical, "red"),
-            ("Rotate", self.rotate_image, "orange"),
-            ("Crop", self.start_cropping, "orange"),
-            ("Blur", self.apply_blur, "orange"),
+            ("Rotate", self.rotate_image, "red"),
+            ("Crop", self.start_cropping, "red"),
+            ("Blur", self.apply_blur, "red"),
             ("Posterize", self.posterize_image, "red"),
-            ("Pencil", self.apply_pencil_effect, "red"),
         ]
 
         for idx, (text, command, color) in enumerate(button_configs):
             btn = CTkButton(
-                frame, text=text, command=command, fg_color=color, font=("Arial", 12)
+                frame, text=text, command=command, fg_color=color, font=("Arial", 16)
             )
-            btn.grid(row=idx // 8, column=idx % 8, sticky="nsew", padx=5, pady=5)
+            btn.grid(row=idx // 8, column=idx % 8, sticky="nsew", padx=10, pady=10)
+
+    
+    def show_brightness_slider(self):
+        if not self.modified_img:
+            messagebox.showerror("Error", "No image loaded!")
+            return
+
+        # Create a dialog window for brightness adjustment
+        brightness_dialog = CTkToplevel(self.root)
+        brightness_dialog.title("Adjust Brightness")
+        brightness_dialog.geometry("400x200")
+
+        # Create a label to show current value
+        value_label = CTkLabel(brightness_dialog, text="Brightness: 1.0")
+        value_label.pack(pady=10)
+
+        # Create slider
+        def update_brightness(value):
+            value = float(value)
+            value_label.configure(text=f"Brightness: {value:.2f}")
+            
+            # Apply brightness in real-time
+            modified = self.apply_image_filter(ImageEnhance.Brightness, value)
+            if modified:
+                self.modified_img = modified
+                self.display_images()
+
+        slider = CTkSlider(
+            brightness_dialog, 
+            from_=0.0, 
+            to=2.0, 
+            number_of_steps=40, 
+            command=update_brightness
+        )
+        slider.set(1.0)  # Default to no change
+        slider.pack(padx=20, pady=20, fill='x')
+
+        # Confirmation button
+        def confirm_brightness():
+            self.log_history(f"Brightness set to {slider.get():.2f}")
+            brightness_dialog.destroy()
+
+        confirm_btn = CTkButton(
+            brightness_dialog, 
+            text="Confirm", 
+            command=confirm_brightness
+        )
+        confirm_btn.pack(pady=10)
+
+    def show_contrast_slider(self):
+        if not self.modified_img:
+            messagebox.showerror("Error", "No image loaded!")
+            return
+
+        # Create a dialog window for contrast adjustment
+        contrast_dialog = tk.Toplevel(self.root)
+        contrast_dialog.title("Adjust Contrast")
+        contrast_dialog.geometry("400x200")
+
+        # Create a label to show current value
+        value_label = CTkLabel(contrast_dialog, text="Contrast: 1.0")
+        value_label.pack(pady=10)
+
+        # Create slider
+        def update_contrast(value):
+            value_label.configure(text=f"Contrast: {value:.2f}")
+            
+            # Apply contrast in real-time
+            modified = self.apply_image_filter(ImageEnhance.Contrast, value)
+            if modified:
+                self.modified_img = modified
+                self.display_images()
+
+        slider = CTkSlider(
+            contrast_dialog, 
+            from_=0.0, 
+            to=2.0, 
+            number_of_steps=40, 
+            command=update_contrast
+        )
+        slider.set(1.0)  # Default to no change
+        slider.pack(padx=20, pady=20, fill='x')
+
+        # Confirmation button
+        def confirm_contrast():
+            self.log_history(f"Contrast set to {slider.get():.2f}")
+            contrast_dialog.destroy()
+
+        confirm_btn = CTkButton(
+            contrast_dialog, 
+            text="Confirm", 
+            command=confirm_contrast
+        )
+        confirm_btn.pack(pady=10)
 
     def upload_image(self):
         file_path = filedialog.askopenfilename(
@@ -108,8 +203,7 @@ class PhotoEditor:
             self.original_img = Image.open(file_path)
             self.modified_img = self.original_img.copy()
             self.display_images()
-            self.history = ["Uploaded Image"]
-            self.update_history()
+            self.log_history("Uploaded Image")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load image: {e}")
 
@@ -144,60 +238,106 @@ class PhotoEditor:
         max_size = (400, 400)
         return image.copy().resize(max_size, Image.Resampling.LANCZOS)
 
-    def adjust_brightness(self):
-        self.apply_filter(ImageEnhance.Brightness, 1.2, action_text="Brightness Increased")
+    def log_history(self, action, save_image=True):
+        if not self.modified_img:
+            return
 
-    def adjust_contrast(self):
-        self.apply_filter(ImageEnhance.Contrast, 1.5, action_text="Contrast Increased")
+        self.history.append(action)
+        
+        if save_image:
+            self.image_history.append(self.modified_img.copy())
+        
+        self.update_history()
 
-    def apply_grayscale(self):
-        self.apply_filter(ImageOps.grayscale, None, action_text="Grayscale Applied")
-
-    def invert_colors(self):
-        self.apply_filter(ImageOps.invert, None, action_text="Colors Inverted")
-
-    def flip_horizontal(self):
-        self.apply_filter(ImageOps.mirror, None, action_text="Flipped Horizontally")
-
-    def flip_vertical(self):
-        self.apply_filter(ImageOps.flip, None, action_text="Flipped Vertically")
-
-    def rotate_image(self):
-        self.apply_filter(lambda img: img.rotate(90), None, action_text="Rotated 90°")
-
-    def apply_blur(self):
-        self.apply_filter(ImageFilter.GaussianBlur, radius=2, action_text="Blur Applied")
-
-    def posterize_image(self):
-        self.apply_filter(lambda img: ImageOps.posterize(img, 2), action_text="Posterized")
-
-    def apply_pencil_effect(self):
-        self.apply_filter(ImageFilter.CONTOUR, None, action_text="Pencil Effect Applied")
-
-    def start_cropping(self):
-        messagebox.showinfo("Info", action_text="Cropping is not yet implemented!")
-
-    def apply_filter(self, filter_func, *args, action_text):
+    def apply_image_filter(self, filter_func, *args):
         if not self.modified_img:
             messagebox.showerror("Error", "No image loaded!")
-            return
+            return None
+
         try:
             # Apply the filter
-            if args and args[0] is not None:
-                if hasattr(filter_func(self.modified_img), 'enhance'):
-                    self.modified_img = filter_func(self.modified_img).enhance(args[0])
-                else:
-                    self.modified_img = filter_func(self.modified_img, *args)
+            if filter_func == ImageFilter.GaussianBlur:
+                modified = self.modified_img.filter(filter_func(radius=args[0]))
+            elif filter_func in [ImageEnhance.Brightness, ImageEnhance.Contrast]:
+                enhancer = filter_func(self.modified_img)
+                modified = enhancer.enhance(args[0])
             else:
-                self.modified_img = filter_func(self.modified_img)
+                modified = filter_func(self.modified_img)
 
-            # Update the history
-            self.history.append(action_text)
-            self.image_history.append(self.modified_img.copy())
-            self.display_images()
-            self.update_history()
+            # Ensure the modified image is a PIL Image object
+            if not isinstance(modified, Image.Image):
+                modified = Image.fromarray(modified)
+
+            return modified
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply filter: {e}")
+            return None
+        
+    def adjust_brightness(self):
+        modified = self.apply_image_filter(ImageEnhance.Brightness, 1.2)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Brightness Increased")
+
+    def adjust_contrast(self):
+        modified = self.apply_image_filter(ImageEnhance.Contrast, 1.5)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Contrast Increased")
+
+    def apply_grayscale(self):
+        modified = self.apply_image_filter(ImageOps.grayscale)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Grayscale Applied")
+
+    def invert_colors(self):
+        modified = self.apply_image_filter(ImageOps.invert)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Colors Inverted")
+
+    def flip_horizontal(self):
+        modified = self.apply_image_filter(ImageOps.mirror)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Flipped Horizontally")
+
+    def flip_vertical(self):
+        modified = self.apply_image_filter(ImageOps.flip)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Flipped Vertically")
+
+    def rotate_image(self):
+        modified = self.apply_image_filter(lambda img: img.transpose(Image.ROTATE_90))
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Rotated 90°")
+
+    def apply_blur(self):
+        modified = self.apply_image_filter(ImageFilter.GaussianBlur, 2)
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Blur Applied")
+
+    def posterize_image(self):
+        modified = self.apply_image_filter(lambda img: ImageOps.posterize(img, 2))
+        if modified:
+            self.modified_img = modified
+            self.display_images()
+            self.log_history("Posterized")
+
+    def start_cropping(self):
+        messagebox.showinfo("Info", "Cropping is not yet implemented!")
 
     def undo_last_action(self):
         if len(self.history) > 1:
